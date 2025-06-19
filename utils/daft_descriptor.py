@@ -35,25 +35,52 @@ def describe_image(uri: str) -> str:
         output = blip_model.generate(**inputs)
     return blip_processor.decode(output[0], skip_special_tokens=True)
 
-# ==== Load + Process ====
+import glob
 
-# Load image paths
-df_jpg = daft.from_glob_path("static/*.jpeg")
-df_png = daft.from_glob_path("static/*.png")
-df = df_jpg.concat(df_png)
+def create_dataframe():
+    dfs = []
+
+    if glob.glob("static/*.jpeg"):
+        df_jpg = daft.from_glob_path("static/*.jpeg")
+        dfs.append(df_jpg)
+    else:
+        print("⚠️ No JPEG files found.")
+
+    if glob.glob("static/*.png"):
+        df_png = daft.from_glob_path("static/*.png")
+        dfs.append(df_png)
+    else:
+        print("⚠️ No PNG files found.")
+
+    if not dfs:
+        print("❌ No images found.")
+        return None
+
+    return dfs[0] if len(dfs) == 1 else dfs[0].concat(*dfs[1:])
+
+def apply(df):
+    # Apply embedding
+    df = df.with_column(
+        "embedding",
+        df["path"].apply(embed_image, return_dtype=DataType.list(DataType.float32()))
+    )
+
+    # Apply description
+    df = df.with_column(
+        "description",
+        df["path"].apply(describe_image, return_dtype=DataType.string())
+    )
+
+    return df
+
+if __name__ == '__main__':
+    # ==== Load + Process ====
+    df = create_dataframe()
+    # Load image paths
 
 
-# Apply embedding
-df = df.with_column(
-    "embedding",
-    df["path"].apply(embed_image, return_dtype=DataType.list(DataType.float32()))
-)
+    # Apply embedding
+    df = apply(df)
 
-# Apply description
-df = df.with_column(
-    "description",
-    df["path"].apply(describe_image, return_dtype=DataType.string())
-)
-
-# ==== Output ====
-df.show()
+    # ==== Output ====
+    df.show()
